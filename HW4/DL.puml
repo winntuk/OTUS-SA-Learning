@@ -1,0 +1,75 @@
+@startuml DataLayer
+left to right direction
+
+package AuthDatabase {
+    class Account {
+        id
+        name
+        details
+        paymentDetails
+    }
+
+    class License {
+        id
+        accountId
+        startDate
+        validTo
+        userId
+    }
+
+    class User {
+        id
+        accountId
+        name
+        password
+        email
+        mobile
+        regDate
+    }
+
+    class AccessTokens {
+        id
+        userId
+        accessKey
+        accessSecret
+        created
+        validTo
+    }
+}
+
+package DeviceDatabase {
+    class Device {
+        id
+        userId
+        deviceType
+        accessKey
+        accessSecret
+
+    }
+
+    class DeviceState {
+        id
+        deviceId
+        timestamp
+        stateData
+    }
+}
+
+package EventDatabase {
+    class DeviceEvents {
+        id
+        deviceId
+        timestamp
+        eventData
+    }
+}
+
+
+License --o Account
+User --o Account
+AccessTokens --o User
+Device --o User
+AccessTokens --|> Device
+DeviceEvents --o Device
+DeviceState --o Device
+@enduml
