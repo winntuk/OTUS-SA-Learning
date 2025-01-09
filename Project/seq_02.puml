@@ -1,0 +1,98 @@
+@startuml SmartLock
+title "Открытие\закрытие умного замка"
+skinparam MaxMessageSize 180
+box External User Segment #LightBlue
+    actor admin
+    boundary MobileApp
+end box
+box Infrastructure Segment #LightGray
+    control ApiGateway as API
+    control AuthService
+    database AuthDatabase
+    queue Queue
+    control EventService
+    database EventDatabase
+    control DeviceService
+    database DeviceServiceDatabase
+end box
+box EndUser Segment #LightSkyBlue
+    participant SmartLock
+end box
+
+activate admin
+admin -> MobileApp : Запускает приложение
+activate MobileApp
+alt Привязка приложения к аккаунту пользователя не произведена
+    admin -> MobileApp: Ввод учетных данных
+    MobileApp -> API: Отправка учётных данных пользователя и служебной информации
+    activate API
+    API -> AuthService: Вызов функции проверки учётных данных
+    activate AuthService
+    AuthService -> AuthDatabase: Запрос учётных данных из базы
+    activate AuthDatabase
+    AuthService <<-- AuthDatabase: Получение учётных данных из базы
+    deactivate AuthDatabase
+    AuthService -> AuthService: Проверка учётных данных
+    AuthService -->> Queue: Отправка сообщения о попытке аутентификации
+    AuthService -->> API: Результат проверки учётных данных
+    deactivate AuthService
+    API -->> MobileApp: Возврат ответа приложению
+    deactivate API
+    MobileApp -->> admin: Подтверждение аутентификации
+end
+
+admin -> MobileApp: Открывает страницу со статусами группы электронных замков
+MobileApp -> API: Запрос периодических метрик электронных замков
+activate API
+API -> AuthService: Аутентификация\авторизация запроса моб приложения
+activate AuthService
+AuthService -> AuthDatabase: Запрос учётных данных из базы
+activate AuthDatabase
+AuthService <<-- AuthDatabase: Получение учётных данных из базы
+deactivate AuthDatabase
+AuthService -> AuthService: Проверка учётных данных
+AuthService -->> Queue: Отправка сообщения о попытке аутентификации
+AuthService -->> API: Результат проверки учётных данных
+deactivate AuthService
+API -> DeviceService: Вызов функции запроса периодических метрик электронных замков
+activate DeviceService
+DeviceService -> DeviceServiceDatabase: Запрос последних периодических метрик из базы
+activate DeviceServiceDatabase
+DeviceService <<-- DeviceServiceDatabase: Получение последних периодических метрик из базы
+deactivate DeviceServiceDatabase
+DeviceService -->> Queue: Отправка сообщения о запросе данных
+DeviceService -->> API: Результат с метриками группы замков
+deactivate DeviceService
+API -->> MobileApp: Возврат ответа приложению
+deactivate API
+MobileApp -> MobileApp: Формирование отображения результата
+MobileApp -->> admin: Получение результата с последними запланированными метриками
+
+alt Принудительное открытие\закрытие замка
+    admin -> MobileApp: Установить статус замка в состояние открыт\закрыт
+    MobileApp -> API: Запрос статуса электронных замков
+    API -> DeviceService: Вызов функции открытия\закрытия замка
+    activate DeviceService
+    DeviceService -> SmartLock: Открытие\закрытие замка
+    activate SmartLock
+    DeviceService <<-- SmartLock: Получение статуса выполнения операции с устройства
+    deactivate SmartLock
+    DeviceService -->> DeviceServiceDatabase: Запись метрик в базу
+    DeviceService -->> Queue: Отправка сообщения о смене статуса устройства
+    DeviceService -->> API: Результат выполнения функции
+    deactivate DeviceService
+    API -->> MobileApp: Возврат ответа приложению
+    deactivate API
+    MobileApp -> MobileApp: Формирование отображения результата
+    MobileApp -->> admin: Получение результата
+end
+
+loop запись событий
+    EventService -> Queue: Запрос сообщений из очереди
+    alt есть новые сообщения
+        Queue -> EventService: Получение новых сообщений
+        EventService -> EventDatabase: Запись новых сообщений в базу событий
+        EventService -> EventService: wait 10 sec
+    end
+end
+@enduml

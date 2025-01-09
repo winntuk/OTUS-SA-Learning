@@ -1,0 +1,98 @@
+@startuml SmartLight
+title "Включение\выключение умной лампочки"
+skinparam MaxMessageSize 180
+box External User Segment #LightBlue
+    actor admin
+    boundary MobileApp
+end box
+box Infrastructure Segment #LightGray
+    control ApiGateway as API
+    control AuthService
+    database AuthDatabase
+    queue Queue
+    control EventService
+    database EventDatabase
+    control DeviceService
+    database DeviceServiceDatabase
+end box
+box EndUser Segment #LightSkyBlue
+    participant SmartLock
+end box
+
+activate admin
+admin -> MobileApp : Запускает приложение
+activate MobileApp
+alt Привязка приложения к аккаунту пользователя не произведена
+    admin -> MobileApp: Ввод учетных данных
+    MobileApp -> API: Отправка учётных данных пользователя и служебной информации
+    activate API
+    API -> AuthService: Вызов функции проверки учётных данных
+    activate AuthService
+    AuthService -> AuthDatabase: Запрос учётных данных из базы
+    activate AuthDatabase
+    AuthService <<-- AuthDatabase: Получение учётных данных из базы
+    deactivate AuthDatabase
+    AuthService -> AuthService: Проверка учётных данных
+    AuthService -->> Queue: Отправка сообщения о попытке аутентификации
+    AuthService -->> API: Результат проверки учётных данных
+    deactivate AuthService
+    API -->> MobileApp: Возврат ответа приложению
+    deactivate API
+    MobileApp -->> admin: Подтверждение аутентификации
+end
+
+admin -> MobileApp: Открывает страницу со статусами устройств
+MobileApp -> API: Запрос периодических метрик устройств
+activate API
+API -> AuthService: Аутентификация\авторизация запроса моб приложения
+activate AuthService
+AuthService -> AuthDatabase: Запрос учётных данных из базы
+activate AuthDatabase
+AuthService <<-- AuthDatabase: Получение учётных данных из базы
+deactivate AuthDatabase
+AuthService -> AuthService: Проверка учётных данных
+AuthService -->> Queue: Отправка сообщения о попытке аутентификации
+AuthService -->> API: Результат проверки учётных данных
+deactivate AuthService
+API -> DeviceService: Вызов функции запроса периодических метрик устройств
+activate DeviceService
+DeviceService -> DeviceServiceDatabase: Запрос последних периодических метрик из базы
+activate DeviceServiceDatabase
+DeviceService <<-- DeviceServiceDatabase: Получение последних периодических метрик из базы
+deactivate DeviceServiceDatabase
+DeviceService -->> Queue: Отправка сообщения о запросе данных
+DeviceService -->> API: Результат с метриками устройств
+deactivate DeviceService
+API -->> MobileApp: Возврат ответа приложению
+deactivate API
+MobileApp -> MobileApp: Формирование отображения результата
+MobileApp -->> admin: Получение результата с последними запланированными метриками
+
+alt Принудительное включение\выключение лампочки
+    admin -> MobileApp: Установить статус лампочки в состояние включена\выключена
+    MobileApp -> API: Запрос статуса устройства
+    API -> DeviceService: Вызов функции включения\выключения лампочки
+    activate DeviceService
+    DeviceService -> SmartLock: Включение\выключение лампочки
+    activate SmartLock
+    DeviceService <<-- SmartLock: Получение статуса выполнения операции с устройства
+    deactivate SmartLock
+    DeviceService -->> DeviceServiceDatabase: Запись метрик в базу
+    DeviceService -->> Queue: Отправка сообщения о смене статуса устройства
+    DeviceService -->> API: Результат выполнения функции
+    deactivate DeviceService
+    API -->> MobileApp: Возврат ответа приложению
+    deactivate API
+    MobileApp -> MobileApp: Формирование отображения результата
+    MobileApp -->> admin: Получение результата
+end
+
+loop запись событий
+    EventService -> Queue: Запрос сообщений из очереди
+    alt есть новые сообщения
+        Queue -> EventService: Получение новых сообщений
+        EventService -> EventDatabase: Запись новых сообщений в базу событий
+        EventService -> EventService: wait 10 sec
+    end
+end
+@enduml
